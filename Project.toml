@@ -1,0 +1,6 @@
+authors = ["quinnj <quinn.jacobd@gmail.com>"]
+name = "Interfaces"
+uuid = "03e0605c-abba-11e8-3c51-6d5d00d1e62e"
+version = "0.1.0"
+
+[deps]
