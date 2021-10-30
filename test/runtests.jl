@@ -83,7 +83,9 @@ abstract type AbstractTable end
         Tables.rows(::AbstractTable)::Iterable
         RT = Interfaces.@returntype Tables.rows(::AbstractTable)
         if Base.IteratorEltype(RT) == Base.HasEltype()
-            eltype(::Type{RT})::Type{Tables.AbstractRow}
+            eltype(::RT)::Type{Tables.AbstractRow} ||
+                eltype(::Type{RT})::Type{Tables.AbstractRow}
+                
         end
     elseif Tables.columnaccess(AbstractTable)
         Tables.istable(::Type{AbstractTable})
