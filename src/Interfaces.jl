@@ -70,6 +70,16 @@ end
 
 requiredmethod(T, nm, args, shouldthrow) = :(Interfaces.implemented($nm, $args, mods) || ($shouldthrow && Interfaces.missingmethod($T, $nm, $args, mods)))
 
+function requiredreturn(T, nm, args, shouldthrow, RT_sym, __RT__)
+    return quote
+        check = $(requiredmethod(T, nm, args, shouldthrow))
+        $RT_sym = Interfaces.returntype($nm, $args)
+        # @show $RT_sym, $nm, $args, Interfaces.isinterfacetype($__RT__)
+        check |= Interfaces.isinterfacetype($__RT__) ?  Interfaces.implements($RT_sym, $__RT__) : $RT_sym <: $__RT__
+        check || ($shouldthrow && Interfaces.invalidreturntype($nm, $args, $RT_sym, $__RT__))
+    end
+end
+
 @noinline missingmethod(T, f, args, mods) = throw(InterfaceImplementationError("missing `$T` interface method definition: `$(Expr(:call, f, unconvertargs(args)...))`, in module(s): `$mods`"))
 @noinline invalidreturntype(T, f, args, RT1, RT2) = throw(InterfaceImplementationError("invalid return type for `$T` interface method definition: `$(Expr(:call, f, unconvertargs(args)...))`; inferred $RT1, required $RT2"))
 @noinline subtypingrequired(IT, T) = throw(InterfaceImplementationError("interface `$IT` requires implementing types to subtype, like: `struct $T <: $IT`"))
@@ -84,16 +94,9 @@ function toimplements!(T, arg::Expr, shouldthrow::Bool=true)
     elseif arg.head == :(::)
         # required method definition and required return type
         nm, args = methodparts(T, arg.args[1])
-        __RT__ = arg.args[2]
         sym = gensym()
-        return quote
-            check = $(requiredmethod(T, nm, args, shouldthrow))
-            $sym = Interfaces.returntype($nm, $args)
-            # @show $sym, $nm, $args, Interfaces.isinterfacetype($__RT__)
-            check |= Interfaces.isinterfacetype($__RT__) ?
-                Interfaces.implements($sym, $__RT__) : $sym <: $__RT__
-            check || ($shouldthrow && Interfaces.invalidreturntype($nm, $args, $sym, $__RT__))
-        end
+        __RT__ = arg.args[2]
+        return requiredreturn(T, nm, args, shouldthrow, sym, __RT__)
     elseif arg.head == :->
         # required method definition with captured return type name
         nm, args = methodparts(T, arg.args[1])
@@ -108,13 +111,7 @@ function toimplements!(T, arg::Expr, shouldthrow::Bool=true)
         else
             invalidnamedreturn()
         end
-        return quote
-            check = $(requiredmethod(T, nm, args, shouldthrow))
-            $sym = Interfaces.returntype($nm, $args)
-            # @show $sym, $nm, $args, Interfaces.isinterfacetype($__RT__)
-            check |= Interfaces.isinterfacetype($__RT__) ?  Interfaces.implements($sym, $__RT__) : $sym <: $__RT__
-            check || ($shouldthrow && Interfaces.invalidreturntype($nm, $args, $sym, $__RT__))
-        end
+        return requiredreturn(T, nm, args, shouldthrow, sym, __RT__)
     elseif arg.head == :<:
         return :((T <: $T) || Interfaces.subtypingrequired($T, T))
     elseif arg.head == :if
