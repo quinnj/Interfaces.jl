@@ -74,6 +74,7 @@ requiredmethod(T, nm, args, shouldthrow) = :(Interfaces.implemented($nm, $args, 
 @noinline invalidreturntype(T, f, args, RT1, RT2) = throw(InterfaceImplementationError("invalid return type for `$T` interface method definition: `$(Expr(:call, f, unconvertargs(args)...))`; inferred $RT1, required $RT2"))
 @noinline subtypingrequired(IT, T) = throw(InterfaceImplementationError("interface `$IT` requires implementing types to subtype, like: `struct $T <: $IT`"))
 @noinline atleastonerequired(T, expr) = throw(InterfaceImplementationError("for `$T` interface, one of the following method definitions is required: `$expr`"))
+invalidnamedreturn() = error("invalid named return syntax in @interface definition; must be `-> RT` or `-> RT::T`")
 
 function toimplements!(T, arg::Expr, shouldthrow::Bool=true)
     if arg.head == :call
@@ -91,6 +92,27 @@ function toimplements!(T, arg::Expr, shouldthrow::Bool=true)
             # @show $sym, $nm, $args, Interfaces.isinterfacetype($__RT__)
             check |= Interfaces.isinterfacetype($__RT__) ?
                 Interfaces.implements($sym, $__RT__) : $sym <: $__RT__
+            check || ($shouldthrow && Interfaces.invalidreturntype($nm, $args, $sym, $__RT__))
+        end
+    elseif arg.head == :->
+        # required method definition with captured return type name
+        nm, args = methodparts(T, arg.args[1])
+        blockargs = arg.args[2].args
+        length(blockargs) == 1 || invalidnamedreturn()
+        if blockargs[1] isa Symbol
+            sym = blockargs[1]
+            __RT__ = Any
+        elseif blockargs[1].head == :(::)
+            sym = blockargs[1].args[1]
+            __RT__ = blockargs[1].args[2]
+        else
+            invalidnamedreturn()
+        end
+        return quote
+            check = $(requiredmethod(T, nm, args, shouldthrow))
+            $sym = Interfaces.returntype($nm, $args)
+            # @show $sym, $nm, $args, Interfaces.isinterfacetype($__RT__)
+            check |= Interfaces.isinterfacetype($__RT__) ?  Interfaces.implements($sym, $__RT__) : $sym <: $__RT__
             check || ($shouldthrow && Interfaces.invalidreturntype($nm, $args, $sym, $__RT__))
         end
     elseif arg.head == :<:
@@ -128,12 +150,6 @@ function toimplements!(T, arg::Expr, shouldthrow::Bool=true)
         # but can be block of if-else or || expressions
         map!(x -> toimplements!(T, x, shouldthrow), arg.args, arg.args)
         return arg
-    elseif arg.head == :(=)
-        arg.args[1] == :T && error("invalid assignment variable name in @interface definition; must use name other than `T`")
-        expr = arg.args[2]
-        expr.head == :macrocall || error("invalid assignment in @interface definition, may only assign result of `RT = Interfaces.@returntype expr`")
-        recursiveswapT!(T, arg)
-        return arg
     else
         throw(ArgumentError("unsupported expression in @interface block for `$T`: `$arg`"))
     end
@@ -163,11 +179,5 @@ macro implements(T, IT)
 end
 
 @noinline returntype(@nospecialize(f), @nospecialize(args)) = Base.return_types(f, args)[1]
-
-macro returntype(expr)
-    @assert expr.head == :call
-    nm, args = methodparts(:T, expr)
-    return esc(:(Interfaces.returntype($nm, $args)))
-end
 
 end # module
