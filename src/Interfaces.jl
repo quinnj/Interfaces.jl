@@ -28,6 +28,18 @@ function implemented(f, args, mods)
     return length(impls) > 0
 end
 
+"""
+Replace all arguments `T` with `:T` in the given `expr::Expr`.
+
+Used to swap `::SomeInterface` -> `::T`, because `@interface` uses syntax like:
+
+    @interface SomeInterface begin
+        foo(::SomeInterface)
+    end
+
+to express "`T` implements the interface `SomeInterface` if there is a method `foo(::T)`",
+i.e. we need there to be a `foo` method that accepts the type `T` not the type `SomeInterface`.
+"""
 function recursiveswapT!(T, expr)
     for i = 1:length(expr.args)
         arg = expr.args[i]
@@ -40,6 +52,15 @@ function recursiveswapT!(T, expr)
     return
 end
 
+"""
+Convert arguments to just their type constraints.
+Used as part of converting method signature syntax to a something we can check for with
+`methods(f, args)`.
+
+    # Given `foo(x::Int, ::Float64, z)`
+    args = [:(1::Int), :(::Float64), :z]
+    convertargs(:SomeInterface, :foo, args) == :(Tuple{Int, Float64, Any})
+"""
 function convertargs(T, nm, args)
     isempty(args) && throw(ArgumentError("invalid `$T` interface method with zero arguments: `$nm()`"))
     for i = 1:length(args)
@@ -61,6 +82,11 @@ end
 
 unconvertargs(::Type{T}) where {T <: Tuple} = Any[Expr(:(::), fieldtype(T, i)) for i = 1:fieldcount(T)]
 
+"""
+Extract the (quoted) function name and argument types from a method signature.
+
+    methodparts(:SomeInterface, :(foo(x::Int, ::Float64, z))) == (:foo, :(Tuple{Int, Float64, Any}))
+"""
 function methodparts(T, x::Expr)
     @assert x.head === :call
     methodname = x.args[1]
