@@ -20,8 +20,8 @@ end
 
 function implements end
 
-implements(::Type{Type{T}}, ::Type{Type{S}}, mods::Vector{Module}=[parentmodule(T)]) where {T, S} =
-    implements(T, S, mods)
+implements(::Type{Type{T}}, ::Type{Type{IT}}, mods::Vector{Module}=[parentmodule(T)]) where {T, IT} =
+    implements(T, IT, mods)
 
 function implemented(f, args, mods)
     impls = Base.methods(f, args, mods)
@@ -40,13 +40,13 @@ Used to swap `::SomeInterface` -> `::T`, because `@interface` uses syntax like:
 to express "`T` implements the interface `SomeInterface` if there is a method `foo(::T)`",
 i.e. we need there to be a `foo` method that accepts the type `T` not the type `SomeInterface`.
 """
-function recursiveswapT!(T, expr, sym=:T)
+function recursiveswapT!(IT, expr, sym=:T)
     for i = 1:length(expr.args)
         arg = expr.args[i]
-        if arg == T
+        if arg == IT
             expr.args[i] = sym
         elseif arg isa Expr
-            recursiveswapT!(T, arg, sym)
+            recursiveswapT!(IT, arg, sym)
         end
     end
     return
@@ -61,20 +61,20 @@ Used as part of converting method signature syntax to a something we can check f
     args = [:(1::Int), :(::Float64), :z]
     convertargs(:SomeInterface, :foo, args) == :(Tuple{Int, Float64, Any})
 """
-function convertargs(T, nm, args)
-    isempty(args) && throw(ArgumentError("invalid `$T` interface method with zero arguments: `$nm()`"))
+function convertargs(IT, nm, args)
+    isempty(args) && throw(ArgumentError("invalid `$IT` interface method with zero arguments: `$nm()`"))
     for i = 1:length(args)
         arg = args[i]
         if arg isa Symbol
             args[i] = :Any
         elseif arg.head === :(::) && length(arg.args) == 1
-            recursiveswapT!(T, arg)
+            recursiveswapT!(IT, arg)
             args[i] = arg.args[1]
         elseif arg.head === :(::) && length(arg.args) == 2
-            recursiveswapT!(T, arg)
+            recursiveswapT!(IT, arg)
             args[i] = arg.args[2]
         else
-            throw(ArgumentError("invalid `$T` interface method argument for method `$nm`: `$arg`"))
+            throw(ArgumentError("invalid `$IT` interface method argument for method `$nm`: `$arg`"))
         end
     end
     return Expr(:curly, :Tuple, args...)
@@ -87,32 +87,32 @@ Extract the (quoted) function name and argument types from a method signature.
 
     methodparts(:SomeInterface, :(foo(x::Int, ::Float64, z))) == (:foo, :(Tuple{Int, Float64, Any}))
 """
-function methodparts(T, x::Expr)
+function methodparts(IT, x::Expr)
     @assert x.head === :call
     methodname = x.args[1]
-    args = convertargs(T, methodname, x.args[2:end])
+    args = convertargs(IT, methodname, x.args[2:end])
     return methodname, args
 end
 
-requiredmethod(T, nm, args, shouldthrow) = :(Interfaces.implemented($nm, $args, mods) || ($shouldthrow && Interfaces.missingmethod($T, $nm, $args, mods)))
+requiredmethod(IT, nm, args, shouldthrow) = :(Interfaces.implemented($nm, $args, mods) || ($shouldthrow && Interfaces.missingmethod($IT, $nm, $args, mods)))
 
-@noinline missingmethod(T, f, args, mods) = throw(InterfaceImplementationError("missing `$T` interface method definition: `$(Expr(:call, f, unconvertargs(args)...))`, in module(s): `$mods`"))
-@noinline invalidreturntype(T, f, args, RT1, RT2) = throw(InterfaceImplementationError("invalid return type for `$T` interface method definition: `$(Expr(:call, f, unconvertargs(args)...))`; inferred $RT1, required $RT2"))
+@noinline missingmethod(IT, f, args, mods) = throw(InterfaceImplementationError("missing `$IT` interface method definition: `$(Expr(:call, f, unconvertargs(args)...))`, in module(s): `$mods`"))
+@noinline invalidreturntype(IT, f, args, RT1, RT2) = throw(InterfaceImplementationError("invalid return type for `$IT` interface method definition: `$(Expr(:call, f, unconvertargs(args)...))`; inferred $RT1, required $RT2"))
 @noinline subtypingrequired(IT, T) = throw(InterfaceImplementationError("interface `$IT` requires implementing types to subtype, like: `struct $T <: $IT`"))
-@noinline atleastonerequired(T, expr) = throw(InterfaceImplementationError("for `$T` interface, one of the following method definitions is required: `$expr`"))
+@noinline atleastonerequired(IT, expr) = throw(InterfaceImplementationError("for `$IT` interface, one of the following method definitions is required: `$expr`"))
 
-function toimplements!(T, arg::Expr, shouldthrow::Bool=true)
+function toimplements!(IT, arg::Expr, shouldthrow::Bool=true)
     if arg.head == :call
         # required method definition
-        nm, args = methodparts(T, arg)
-        return requiredmethod(T, nm, args, shouldthrow)
+        nm, args = methodparts(IT, arg)
+        return requiredmethod(IT, nm, args, shouldthrow)
     elseif arg.head == :(::)
         # required method definition and required return type
-        nm, args = methodparts(T, arg.args[1])
+        nm, args = methodparts(IT, arg.args[1])
         __RT__ = arg.args[2]
         sym = gensym()
         return quote
-            check = $(requiredmethod(T, nm, args, shouldthrow))
+            check = $(requiredmethod(IT, nm, args, shouldthrow))
             $sym = Interfaces.returntype($nm, $args)
             # @show $sym, $nm, $args, Interfaces.isinterfacetype($__RT__)
             check |= Interfaces.isinterfacetype($__RT__) ?
@@ -120,20 +120,20 @@ function toimplements!(T, arg::Expr, shouldthrow::Bool=true)
             check || ($shouldthrow && Interfaces.invalidreturntype($nm, $args, $sym, $__RT__))
         end
     elseif arg.head == :<:
-        return :((T <: $T) || Interfaces.subtypingrequired($T, T))
+        return :((T <: $IT) || Interfaces.subtypingrequired($IT, T))
     elseif arg.head == :if
         # conditional requirement
         origarg = arg
-        recursiveswapT!(T, arg.args[1])
-        arg.args[2] = toimplements!(T, arg.args[2])
+        recursiveswapT!(IT, arg.args[1])
+        arg.args[2] = toimplements!(IT, arg.args[2])
         while length(arg.args) > 2
             if arg.args[3].head == :elseif
                 arg = arg.args[3]
-                recursiveswapT!(T, arg.args[1])
-                arg.args[2] = toimplements!(T, arg.args[2])
+                recursiveswapT!(IT, arg.args[1])
+                arg.args[2] = toimplements!(IT, arg.args[2])
             else
                 # else block
-                arg.args[3] = toimplements!(T, arg.args[3])
+                arg.args[3] = toimplements!(IT, arg.args[3])
                 break
             end
         end
@@ -143,49 +143,49 @@ function toimplements!(T, arg::Expr, shouldthrow::Bool=true)
         argcopy = copy(arg)
         origarg = arg
         while true
-            arg.args[1] = toimplements!(T, arg.args[1], false)
+            arg.args[1] = toimplements!(IT, arg.args[1], false)
             arg.args[2].head == :|| || break
             arg = arg.args[2]
         end
-        arg.args[2] = toimplements!(T, arg.args[2], false)
-        return :(($origarg) || Interfaces.atleastonerequired($T, $(Meta.quot(argcopy))))
+        arg.args[2] = toimplements!(IT, arg.args[2], false)
+        return :(($origarg) || Interfaces.atleastonerequired($IT, $(Meta.quot(argcopy))))
     elseif arg.head == :block
         # not supported at top-level of @interface block
         # but can be block of if-else or || expressions
-        map!(x -> toimplements!(T, x, shouldthrow), arg.args, arg.args)
+        map!(x -> toimplements!(IT, x, shouldthrow), arg.args, arg.args)
         return arg
     elseif arg.head == :(=)
         arg.args[1] == :T && error("invalid assignment variable name in @interface definition; must use name other than `T`")
         expr = arg.args[2]
         expr.head == :macrocall || error("invalid assignment in @interface definition, may only assign result of `RT = Interfaces.@returntype expr`")
-        recursiveswapT!(T, arg)
+        recursiveswapT!(IT, arg)
         return arg
     else
-        throw(ArgumentError("unsupported expression in @interface block for `$T`: `$arg`"))
+        throw(ArgumentError("unsupported expression in @interface block for `$IT`: `$arg`"))
     end
 end
 
-macro interface(T, alias_or_block, maybe_block=nothing)
-    @assert T isa Symbol || T.head == :.
+macro interface(IT, alias_or_block, maybe_block=nothing)
+    @assert IT isa Symbol || IT.head == :.
     if alias_or_block isa Symbol
         alias = alias_or_block
         block = maybe_block
     else
-        alias = T
+        alias = IT
         block = alias_or_block
     end
     @assert block isa Expr && block.head == :block
     Base.remove_linenums!(block)
-    if T !== alias
-        recursiveswapT!(alias, block, T)
+    if IT !== alias
+        recursiveswapT!(alias, block, IT)
     end
-    iface = Interface(T, deepcopy(block.args))
+    iface = Interface(IT, deepcopy(block.args))
     filter!(x -> !(x isa String), block.args)
-    toimplements!(T, block)
+    toimplements!(IT, block)
     return esc(quote
-        Interfaces.isinterfacetype(::Type{$T}) = true
-        Interfaces.interface(::Type{$T}) = $iface
-        function Interfaces.implements(::Type{T}, ::Type{$T}, mods::Vector{Module}=[parentmodule(T)]) where {T}
+        Interfaces.isinterfacetype(::Type{$IT}) = true
+        Interfaces.interface(::Type{$IT}) = $iface
+        function Interfaces.implements(::Type{T}, ::Type{$IT}, mods::Vector{Module}=[parentmodule(T)]) where {T}
             $block
         end
     end)
