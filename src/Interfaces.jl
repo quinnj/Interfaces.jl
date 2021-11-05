@@ -40,13 +40,13 @@ Used to swap `::SomeInterface` -> `::T`, because `@interface` uses syntax like:
 to express "`T` implements the interface `SomeInterface` if there is a method `foo(::T)`",
 i.e. we need there to be a `foo` method that accepts the type `T` not the type `SomeInterface`.
 """
-function recursiveswapT!(IT, expr, sym=:T)
+function recursiveswapsymbols!(IT, expr, sym=:T)
     for i = 1:length(expr.args)
         arg = expr.args[i]
         if arg == IT
             expr.args[i] = sym
         elseif arg isa Expr
-            recursiveswapT!(IT, arg, sym)
+            recursiveswapsymbols!(IT, arg, sym)
         end
     end
     return
@@ -68,10 +68,10 @@ function convertargs(IT, nm, args)
         if arg isa Symbol
             args[i] = :Any
         elseif arg.head === :(::) && length(arg.args) == 1
-            recursiveswapT!(IT, arg)
+            recursiveswapsymbols!(IT, arg)
             args[i] = arg.args[1]
         elseif arg.head === :(::) && length(arg.args) == 2
-            recursiveswapT!(IT, arg)
+            recursiveswapsymbols!(IT, arg)
             args[i] = arg.args[2]
         else
             throw(ArgumentError("invalid `$IT` interface method argument for method `$nm`: `$arg`"))
@@ -124,12 +124,12 @@ function toimplements!(IT, arg::Expr, shouldthrow::Bool=true)
     elseif arg.head == :if
         # conditional requirement
         origarg = arg
-        recursiveswapT!(IT, arg.args[1])
+        recursiveswapsymbols!(IT, arg.args[1])
         arg.args[2] = toimplements!(IT, arg.args[2])
         while length(arg.args) > 2
             if arg.args[3].head == :elseif
                 arg = arg.args[3]
-                recursiveswapT!(IT, arg.args[1])
+                recursiveswapsymbols!(IT, arg.args[1])
                 arg.args[2] = toimplements!(IT, arg.args[2])
             else
                 # else block
@@ -158,7 +158,7 @@ function toimplements!(IT, arg::Expr, shouldthrow::Bool=true)
         arg.args[1] == :T && error("invalid assignment variable name in @interface definition; must use name other than `T`")
         expr = arg.args[2]
         expr.head == :macrocall || error("invalid assignment in @interface definition, may only assign result of `RT = Interfaces.@returntype expr`")
-        recursiveswapT!(IT, arg)
+        recursiveswapsymbols!(IT, arg)
         return arg
     else
         throw(ArgumentError("unsupported expression in @interface block for `$IT`: `$arg`"))
@@ -177,7 +177,7 @@ macro interface(IT, alias_or_block, maybe_block=nothing)
     @assert block isa Expr && block.head == :block
     Base.remove_linenums!(block)
     if IT !== alias
-        recursiveswapT!(alias, block, IT)
+        recursiveswapsymbols!(alias, block, IT)
     end
     iface = Interface(IT, deepcopy(block.args))
     filter!(x -> !(x isa String), block.args)
