@@ -177,6 +177,8 @@ macro interface(IT, alias_or_block, maybe_block=nothing)
     @assert block isa Expr && block.head == :block
     Base.remove_linenums!(block)
     if IT !== alias
+        # Swap the alias for the InterfaceType itself, so later we can generically swap the
+        # InterfaceType for an arbitrary symbol e.g. :T, regardless of if an alias was used.
         recursiveswapsymbols!(alias, block, IT)
     end
     iface = Interface(IT, deepcopy(block.args))
