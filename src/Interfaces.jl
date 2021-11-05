@@ -84,7 +84,6 @@ end
 @noinline invalidreturntype(T, f, args, RT1, RT2) = throw(InterfaceImplementationError("invalid return type for `$T` interface method definition: `$(Expr(:call, f, unconvertargs(args)...))`; inferred $RT1, required $RT2"))
 @noinline subtypingrequired(IT, T) = throw(InterfaceImplementationError("interface `$IT` requires implementing types to subtype, like: `struct $T <: $IT`"))
 @noinline atleastonerequired(T, expr) = throw(InterfaceImplementationError("for `$T` interface, one of the following method definitions is required: `$expr`"))
-invalidnamedreturn() = error("invalid named return syntax in @interface definition; must be `-> RT` or `-> RT::T`")
 
 function toimplements!(T, arg::Expr, shouldthrow::Bool=true)
     if arg.head == :call
@@ -94,22 +93,14 @@ function toimplements!(T, arg::Expr, shouldthrow::Bool=true)
     elseif arg.head == :(::)
         # required method definition and required return type
         nm, args = methodparts(T, arg.args[1])
-        sym = gensym()
-        __RT__ = arg.args[2]
-        return requiredreturn(T, nm, args, shouldthrow, sym, __RT__)
-    elseif arg.head == :->
-        # required method definition with captured return type name
-        nm, args = methodparts(T, arg.args[1])
-        blockargs = arg.args[2].args
-        length(blockargs) == 1 || invalidnamedreturn()
-        if blockargs[1] isa Symbol
-            sym = blockargs[1]
-            __RT__ = Any
-        elseif blockargs[1].head == :(::)
-            sym = blockargs[1].args[1]
-            __RT__ = blockargs[1].args[2]
-        else
-            invalidnamedreturn()
+        annotation = arg.args[2]
+        if !isa(annotation, Symbol) && annotation.head == :where
+            # `::(T where T)` or `::(T where T<:Foo)`
+            sym = annotation.args[1]
+            __RT__ = annotation.args[2] isa Symbol ? Any : annotation.args[2].args[2]
+        else # `::Foo` or `::Union{Foo,Bar}` or `::Type{Foo}`
+            sym = gensym()
+            __RT__ = annotation
         end
         return requiredreturn(T, nm, args, shouldthrow, sym, __RT__)
     elseif arg.head == :<:

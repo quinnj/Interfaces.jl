@@ -80,7 +80,7 @@ abstract type AbstractTable end
         Tables.rowaccess(::Type{AbstractTable}) ||
             Tables.columnaccess(::Type{AbstractTable})
     if Tables.isrowtable(AbstractTable) || Tables.rowaccess(AbstractTable)
-        Tables.rows(::AbstractTable) -> RT::Iterable
+        Tables.rows(::AbstractTable)::RT where {RT <: Iterable}
         if Base.IteratorEltype(RT) == Base.HasEltype()
             eltype(::RT)::Type{Tables.AbstractRow} ||
                 eltype(::Type{RT})::Type{Tables.AbstractRow}
