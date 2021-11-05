@@ -29,7 +29,7 @@ function implemented(f, args, mods)
 end
 
 """
-Replace all arguments `T` with `:T` in the given `expr::Expr`.
+Replace all arguments `T` with `sym` (default `:T`) in the given `expr::Expr`.
 
 Used to swap `::SomeInterface` -> `::T`, because `@interface` uses syntax like:
 
@@ -40,13 +40,13 @@ Used to swap `::SomeInterface` -> `::T`, because `@interface` uses syntax like:
 to express "`T` implements the interface `SomeInterface` if there is a method `foo(::T)`",
 i.e. we need there to be a `foo` method that accepts the type `T` not the type `SomeInterface`.
 """
-function recursiveswapT!(T, expr)
+function recursiveswapT!(T, expr, sym=:T)
     for i = 1:length(expr.args)
         arg = expr.args[i]
         if arg == T
-            expr.args[i] = :T
+            expr.args[i] = sym
         elseif arg isa Expr
-            recursiveswapT!(T, arg)
+            recursiveswapT!(T, arg, sym)
         end
     end
     return
@@ -165,10 +165,20 @@ function toimplements!(T, arg::Expr, shouldthrow::Bool=true)
     end
 end
 
-macro interface(T, block)
+macro interface(T, alias_or_block, maybe_block=nothing)
     @assert T isa Symbol || T.head == :.
+    if alias_or_block isa Symbol
+        alias = alias_or_block
+        block = maybe_block
+    else
+        alias = T
+        block = alias_or_block
+    end
     @assert block isa Expr && block.head == :block
     Base.remove_linenums!(block)
+    if T !== alias
+        recursiveswapT!(alias, block, T)
+    end
     iface = Interface(T, deepcopy(block.args))
     filter!(x -> !(x isa String), block.args)
     toimplements!(T, block)

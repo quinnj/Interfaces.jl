@@ -37,18 +37,18 @@ end
 
 @test Interfaces.implements(Array, Indexable, [Base])
 
-@interface AbstractArray begin
+@interface AbstractArray T begin
 
-    <: AbstractArray
-    size(::AbstractArray)
-    Base.IndexStyle(::Type{AbstractArray})::Union{Base.IndexLinear, Base.IndexCartesian}
+    T <: AbstractArray
+    size(::T)
+    Base.IndexStyle(::Type{T})::Union{Base.IndexLinear, Base.IndexCartesian}
 
-    if Base.IndexStyle(AbstractArray) == Base.IndexLinear()
-        getindex(::AbstractArray, i::Int)
-        setindex!(::AbstractArray, v, i::Int)
-    elseif Base.IndexStyle(AbstractArray) == Base.IndexCartesian()
-        getindex(::AbstractArray, I::Vararg{Int})
-        setindex!(::AbstractArray, v, I::Vararg{Int})
+    if Base.IndexStyle(T) == Base.IndexLinear()
+        getindex(::T, i::Int)
+        setindex!(::T, v, i::Int)
+    elseif Base.IndexStyle(T) == Base.IndexCartesian()
+        getindex(::T, I::Vararg{Int})
+        setindex!(::T, v, I::Vararg{Int})
     end
 
 end
@@ -61,16 +61,16 @@ struct Foo end
 
 @test_throws InterfaceImplementationError Interfaces.implements(Foo, Iterable)
 
-@interface Tables.AbstractColumns begin
-    Tables.getcolumn(::Tables.AbstractColumns, ::Int)
-    Tables.getcolumn(::Tables.AbstractColumns, ::Symbol)
-    Tables.columnnames(::Tables.AbstractColumns)
+@interface Tables.AbstractColumns T begin
+    Tables.getcolumn(::T, ::Int)
+    Tables.getcolumn(::T, ::Symbol)
+    Tables.columnnames(::T)
 end
 
-@interface Tables.AbstractRow begin
-    Tables.getcolumn(::Tables.AbstractRow, ::Int)
-    Tables.getcolumn(::Tables.AbstractRow, ::Symbol)
-    Tables.columnnames(::Tables.AbstractRow)
+@interface Tables.AbstractRow T begin
+    Tables.getcolumn(::T, ::Int)
+    Tables.getcolumn(::T, ::Symbol)
+    Tables.columnnames(::T)
 end
 
 abstract type AbstractTable end
