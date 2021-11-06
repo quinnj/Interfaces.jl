@@ -84,14 +84,14 @@ abstract type AbstractTable end
         if Base.IteratorEltype(RT) == Base.HasEltype()
             eltype(::RT)::Type{Tables.AbstractRow} ||
                 eltype(::Type{RT})::Type{Tables.AbstractRow}
-                
         end
     elseif Tables.columnaccess(AbstractTable)
         Tables.istable(::Type{AbstractTable})
-        Tables.columns(::AbstractTable)::AbstractColumns
+        Tables.columns(::AbstractTable)::Tables.AbstractColumns
     end
 
     # @optional schema(::AbstractTable)::Union{Nothing, Tables.Schema}
 end
 
 @test Interfaces.implements(Tables.DictRowTable, AbstractTable)
+@test Interfaces.implements(Tables.DictColumnTable, AbstractTable)
