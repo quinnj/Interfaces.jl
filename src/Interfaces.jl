@@ -96,6 +96,16 @@ end
 
 requiredmethod(IT, nm, args, shouldthrow) = :(Interfaces.implemented($nm, $args, mods) || ($shouldthrow && Interfaces.missingmethod($IT, $nm, $args, mods)))
 
+function requiredreturn(T, nm, args, shouldthrow, RT_sym, __RT__)
+    return quote
+        check = $(requiredmethod(T, nm, args, shouldthrow))
+        $RT_sym = Interfaces.returntype($nm, $args)
+        # @show $RT_sym, $nm, $args, Interfaces.isinterfacetype($__RT__)
+        check |= Interfaces.isinterfacetype($__RT__) ?  Interfaces.implements($RT_sym, $__RT__) : $RT_sym <: $__RT__
+        check || ($shouldthrow && Interfaces.invalidreturntype($nm, $args, $RT_sym, $__RT__))
+    end
+end
+
 @noinline missingmethod(IT, f, args, mods) = throw(InterfaceImplementationError("missing `$IT` interface method definition: `$(Expr(:call, f, unconvertargs(args)...))`, in module(s): `$mods`"))
 @noinline invalidreturntype(IT, f, args, RT1, RT2) = throw(InterfaceImplementationError("invalid return type for `$IT` interface method definition: `$(Expr(:call, f, unconvertargs(args)...))`; inferred $RT1, required $RT2"))
 @noinline subtypingrequired(IT, T) = throw(InterfaceImplementationError("interface `$IT` requires implementing types to subtype, like: `struct $T <: $IT`"))
@@ -109,16 +119,16 @@ function toimplements!(IT, arg::Expr, shouldthrow::Bool=true)
     elseif arg.head == :(::)
         # required method definition and required return type
         nm, args = methodparts(IT, arg.args[1])
-        __RT__ = arg.args[2]
-        sym = gensym()
-        return quote
-            check = $(requiredmethod(IT, nm, args, shouldthrow))
-            $sym = Interfaces.returntype($nm, $args)
-            # @show $sym, $nm, $args, Interfaces.isinterfacetype($__RT__)
-            check |= Interfaces.isinterfacetype($__RT__) ?
-                Interfaces.implements($sym, $__RT__) : $sym <: $__RT__
-            check || ($shouldthrow && Interfaces.invalidreturntype($nm, $args, $sym, $__RT__))
+        annotation = arg.args[2]
+        if !isa(annotation, Symbol) && annotation.head == :where
+            # `::(T where T)` or `::(T where T<:Foo)`
+            sym = annotation.args[1]
+            __RT__ = annotation.args[2] isa Symbol ? Any : annotation.args[2].args[2]
+        else # `::Foo` or `::Union{Foo,Bar}` or `::Type{Foo}`
+            sym = gensym()
+            __RT__ = annotation
         end
+        return requiredreturn(T, nm, args, shouldthrow, sym, __RT__)
     elseif arg.head == :<:
         return :((T <: $IT) || Interfaces.subtypingrequired($IT, T))
     elseif arg.head == :if
@@ -153,12 +163,6 @@ function toimplements!(IT, arg::Expr, shouldthrow::Bool=true)
         # not supported at top-level of @interface block
         # but can be block of if-else or || expressions
         map!(x -> toimplements!(IT, x, shouldthrow), arg.args, arg.args)
-        return arg
-    elseif arg.head == :(=)
-        arg.args[1] == :T && error("invalid assignment variable name in @interface definition; must use name other than `T`")
-        expr = arg.args[2]
-        expr.head == :macrocall || error("invalid assignment in @interface definition, may only assign result of `RT = Interfaces.@returntype expr`")
-        recursiveswapsymbols!(IT, arg)
         return arg
     else
         throw(ArgumentError("unsupported expression in @interface block for `$IT`: `$arg`"))
@@ -201,11 +205,5 @@ macro implements(T, IT)
 end
 
 @noinline returntype(@nospecialize(f), @nospecialize(args)) = Base.return_types(f, args)[1]
-
-macro returntype(expr)
-    @assert expr.head == :call
-    nm, args = methodparts(:T, expr)
-    return esc(:(Interfaces.returntype($nm, $args)))
-end
 
 end # module
