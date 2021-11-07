@@ -94,6 +94,13 @@ function methodparts(IT, x::Expr)
     return methodname, args
 end
 
+"""
+Construct the method signature from a function name and argument types.
+
+    methodsig(:foo, Tuple{Int64, Float64, Any}) == :(foo(::Int64, ::Float64, ::Any))
+"""
+methodsig(f, args) = Expr(:call, f, unconvertargs(args)...)
+
 requiredmethod(IT, nm, args, shouldthrow) = :(Interfaces.implemented($nm, $args, mods) || ($shouldthrow && Interfaces.missingmethod($IT, $nm, $args, mods)))
 
 function requiredreturn(T, nm, args, shouldthrow, RT_sym, __RT__)
@@ -106,8 +113,8 @@ function requiredreturn(T, nm, args, shouldthrow, RT_sym, __RT__)
     end
 end
 
-@noinline missingmethod(IT, f, args, mods) = throw(InterfaceImplementationError("missing `$IT` interface method definition: `$(Expr(:call, f, unconvertargs(args)...))`, in module(s): `$mods`"))
-@noinline invalidreturntype(IT, f, args, RT1, RT2) = throw(InterfaceImplementationError("invalid return type for `$IT` interface method definition: `$(Expr(:call, f, unconvertargs(args)...))`; inferred $RT1, required $RT2"))
+@noinline missingmethod(IT, f, args, mods) = throw(InterfaceImplementationError("missing `$IT` interface method definition: `$(Interfaces.methodsig(f, args))`, in module(s): `$mods`"))
+@noinline invalidreturntype(IT, f, args, RT1, RT2) = throw(InterfaceImplementationError("invalid return type for `$IT` interface method definition: `$(methodsig(f, args))`; inferred $RT1, required $RT2"))
 @noinline subtypingrequired(IT, T) = throw(InterfaceImplementationError("interface `$IT` requires implementing types to subtype, like: `struct $T <: $IT`"))
 @noinline atleastonerequired(IT, expr) = throw(InterfaceImplementationError("for `$IT` interface, one of the following method definitions is required: `$expr`"))
 
