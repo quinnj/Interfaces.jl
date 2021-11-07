@@ -128,7 +128,7 @@ function toimplements!(IT, arg::Expr, shouldthrow::Bool=true)
             sym = gensym()
             __RT__ = annotation
         end
-        return requiredreturn(T, nm, args, shouldthrow, sym, __RT__)
+        return requiredreturn(IT, nm, args, shouldthrow, sym, __RT__)
     elseif arg.head == :<:
         return :((T <: $IT) || Interfaces.subtypingrequired($IT, T))
     elseif arg.head == :if
