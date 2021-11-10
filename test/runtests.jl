@@ -101,7 +101,7 @@ abstract type AbstractStridedArray end
 @interface AbstractStridedArray A begin
     A <: AbstractArray
     strides(::A)
-    Base.unsafe_convert(::Type{Ptr{Any}}, ::A)
+    Base.unsafe_convert(::Type{<:Ptr}, ::A)
     Base.elsize(::Type{<:A})
     @optional stride(::A, i::Int)
 end
