@@ -20,7 +20,7 @@ end
 
 function implements end
 
-implements(::Type{Type{T}}, ::Type{Type{IT}}, mods::Vector{Module}=[parentmodule(T)]; debug=false) where {T, IT} =
+implements(::Type{Type{T}}, ::Type{Type{IT}}, mods::Vector{Module}=[parentmodule(T)]; debug::Bool=false) where {T, IT} =
     implements(T, IT, mods; debug=debug)
 
 function implemented(f, args, mods)
@@ -102,7 +102,7 @@ Construct the method signature from a function name and argument types.
 methodsig(f, args) = Expr(:call, f, unconvertargs(args)...)
 
 function requiredmethod(IT, nm, args, shouldthrow)
-    :(Interfaces.implemented($nm, $args, mods) || ($shouldthrow && Interfaces.missingmethod(debug, $IT, $nm, $args, mods)))
+    :(Interfaces.implemented($nm, $args, mods) || ($shouldthrow && Interfaces.missingmethod(debuglvl, $IT, $nm, $args, mods)))
 end
 
 function requiredreturn(IT, nm, args, shouldthrow, RT_sym, __RT__)
@@ -111,33 +111,38 @@ function requiredreturn(IT, nm, args, shouldthrow, RT_sym, __RT__)
         $RT_sym = Interfaces.returntype($nm, $args)
         # @show $RT_sym, $nm, $args, Interfaces.isinterfacetype($__RT__)
         check = Interfaces.isinterfacetype($__RT__) ?  Interfaces.implements($RT_sym, $__RT__) : $RT_sym <: $__RT__
-        check || ($shouldthrow && Interfaces.invalidreturntype(debug, $IT, $nm, $args, $RT_sym, $__RT__))
+        check || ($shouldthrow && Interfaces.invalidreturntype(debuglvl, $IT, $nm, $args, $RT_sym, $__RT__))
         check
     end
 end
 
-@noinline function missingmethod(debug, IT, f, args, mods)
+@noinline function missingmethod(debuglvl, IT, f, args, mods)
     msg = "missing `$IT` interface method definition: `$(Interfaces.methodsig(f, args))`, in module(s): `$mods`"
-    debug ? print_error(msg) : throw(InterfaceImplementationError(msg))
+    debuglvl == :error ? print_error(msg) : debuglvl == :warn ? print_warn(msg) : throw(InterfaceImplementationError(msg))
 end
 
-@noinline function invalidreturntype(debug, IT, f, args, RT1, RT2)
+@noinline function invalidreturntype(debuglvl, IT, f, args, RT1, RT2)
     msg = "invalid return type for `$IT` interface method definition: `$(methodsig(f, args))`; inferred $RT1, required $RT2"
-    debug ? print_error(msg) : throw(InterfaceImplementationError(msg))
+    debuglvl == :error ? print_error(msg) : debuglvl == :warn ? print_warn(msg) : throw(InterfaceImplementationError(msg))
 end
 
-@noinline function subtypingrequired(debug, IT, T)
+@noinline function subtypingrequired(debuglvl, IT, T)
     msg = "interface `$IT` requires implementing types to subtype, like: `struct $T <: $IT`"
-    debug ? print_error(msg) : throw(InterfaceImplementationError(msg))
+    debuglvl == :error ? print_error(msg) : debuglvl == :warn ? print_warn(msg) : throw(InterfaceImplementationError(msg))
 end
 
-@noinline function atleastonerequired(debug, IT, expr)
+@noinline function atleastonerequired(debuglvl, IT, expr)
     msg = "for `$IT` interface, one of the following method definitions is required: `$expr`"
-    debug ? print_error(msg) : throw(InterfaceImplementationError(msg))
+    debuglvl == :error ? print_error(msg) : debuglvl == :warn ? print_warn(msg) : throw(InterfaceImplementationError(msg))
 end
 
 function print_error(msg)
     printstyled("[ InterfaceImplementationError: "; color=Base.error_color())
+    println(msg)
+end
+
+function print_warn(msg)
+    printstyled("[ @optional definition missing: "; color=Base.warn_color())
     println(msg)
 end
 
@@ -164,13 +169,13 @@ function toimplements!(IT, arg::Expr, shouldthrow::Bool=true)
         if RT == IT
             return quote
                 check = T <: $RT
-                check || Interfaces.subtypingrequired($RT, T)
+                check || Interfaces.subtypingrequired(debuglvl, $RT, T)
                 check
             end
         else
             return quote
                 check = Interfaces.isinterfacetype($RT) ? Interfaces.implements(T, $RT, mods) : T <: $RT
-                check || Interfaces.subtypingrequired($RT, T)
+                check || Interfaces.subtypingrequired(debuglvl, $RT, T)
                 check
             end
         end
@@ -203,7 +208,7 @@ function toimplements!(IT, arg::Expr, shouldthrow::Bool=true)
         arg.args[2] = toimplements!(IT, arg.args[2], false)
         return quote
             check = $origarg
-            check || Interfaces.atleastonerequired(debug, $IT, $(Meta.quot(argcopy)))
+            check || Interfaces.atleastonerequired(debuglvl, $IT, $(Meta.quot(argcopy)))
             check
         end
     elseif arg.head == :block
@@ -213,8 +218,12 @@ function toimplements!(IT, arg::Expr, shouldthrow::Bool=true)
         return arg
     elseif arg.head == :macrocall && arg.args[1] == Symbol("@optional")
         return quote
-            if @isdefined(debug) && debug
-                $(toimplements!(IT, arg.args[3]))
+            if debug
+                oldlvl = debuglvl
+                debuglvl = :warn
+                check = $(toimplements!(IT, arg.args[3], shouldthrow))
+                debuglvl = oldlvl
+                check
             else
                 true
             end
@@ -249,7 +258,8 @@ macro interface(IT, alias_or_block, maybe_block=nothing)
     return esc(quote
         Interfaces.isinterfacetype(::Type{$IT}) = true
         Interfaces.interface(::Type{$IT}) = $iface
-        function Interfaces.implements(::Type{T}, ::Type{$IT}, mods::Vector{Module}=[parentmodule(T)]; debug=false) where {T}
+        function Interfaces.implements(::Type{T}, ::Type{$IT}, mods::Vector{Module}=[parentmodule(T)]; debug::Bool=false) where {T}
+            debuglvl = debug ? :error : :none
             $block
         end
     end)
@@ -258,7 +268,7 @@ end
 macro implements(T, IT, debug=false)
     x = debug isa Bool ? debug :
         (debug isa Expr && debug.head == :(=)) ? debug.args[2] :
-        throw(ArgumentError("unsupported call to @implements: `$debug`"))
+        throw(ArgumentError("unsupported argument in @implements: `$debug`"))
     return esc(quote
         @assert Interfaces.implements($T, $IT; debug=$x)
         Interfaces.implements(::Type{$T}, ::Type{$IT}) = true
