@@ -160,10 +160,16 @@ function toimplements!(IT, arg::Expr, shouldthrow::Bool=true)
         arg.args[2] = toimplements!(IT, arg.args[2], false)
         return :(($origarg) || Interfaces.atleastonerequired($IT, $(Meta.quot(argcopy))))
     elseif arg.head == :block
-        # not supported at top-level of @interface block
+        # not expected at top-level of @interface block
         # but can be block of if-else or || expressions
         map!(x -> toimplements!(IT, x, shouldthrow), arg.args, arg.args)
         return arg
+    elseif arg.head == :macrocall && arg.args[1] == :@optional
+        return quote
+            if @isdefined(debug) && debug
+                $(toimplements!(IT, arg.args[2]))
+            end
+        end
     else
         throw(ArgumentError("unsupported expression in @interface block for `$IT`: `$arg`"))
     end
