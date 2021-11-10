@@ -168,6 +168,8 @@ function toimplements!(IT, arg::Expr, shouldthrow::Bool=true)
         return quote
             if @isdefined(debug) && debug
                 $(toimplements!(IT, arg.args[3]))
+            else
+                true
             end
         end
     else
