@@ -20,8 +20,8 @@ end
 
 function implements end
 
-implements(::Type{Type{T}}, ::Type{Type{IT}}, mods::Vector{Module}=[parentmodule(T)]) where {T, IT} =
-    implements(T, IT, mods)
+implements(::Type{Type{T}}, ::Type{Type{IT}}, mods::Vector{Module}=[parentmodule(T)]; debug=false) where {T, IT} =
+    implements(T, IT, mods; debug=debug)
 
 function implemented(f, args, mods)
     impls = Base.methods(f, args, mods)
@@ -101,22 +101,45 @@ Construct the method signature from a function name and argument types.
 """
 methodsig(f, args) = Expr(:call, f, unconvertargs(args)...)
 
-requiredmethod(IT, nm, args, shouldthrow) = :(Interfaces.implemented($nm, $args, mods) || ($shouldthrow && Interfaces.missingmethod($IT, $nm, $args, mods)))
+function requiredmethod(IT, nm, args, shouldthrow)
+    :(Interfaces.implemented($nm, $args, mods) || ($shouldthrow && Interfaces.missingmethod(debug, $IT, $nm, $args, mods)))
+end
 
-function requiredreturn(T, nm, args, shouldthrow, RT_sym, __RT__)
+function requiredreturn(IT, nm, args, shouldthrow, RT_sym, __RT__)
     return quote
-        check = $(requiredmethod(T, nm, args, shouldthrow))
+        $(requiredmethod(IT, nm, args, shouldthrow))
         $RT_sym = Interfaces.returntype($nm, $args)
         # @show $RT_sym, $nm, $args, Interfaces.isinterfacetype($__RT__)
-        check |= Interfaces.isinterfacetype($__RT__) ?  Interfaces.implements($RT_sym, $__RT__) : $RT_sym <: $__RT__
-        check || ($shouldthrow && Interfaces.invalidreturntype($nm, $args, $RT_sym, $__RT__))
+        check = Interfaces.isinterfacetype($__RT__) ?  Interfaces.implements($RT_sym, $__RT__) : $RT_sym <: $__RT__
+        check || ($shouldthrow && Interfaces.invalidreturntype(debug, $IT, $nm, $args, $RT_sym, $__RT__))
+        check
     end
 end
 
-@noinline missingmethod(IT, f, args, mods) = throw(InterfaceImplementationError("missing `$IT` interface method definition: `$(Interfaces.methodsig(f, args))`, in module(s): `$mods`"))
-@noinline invalidreturntype(IT, f, args, RT1, RT2) = throw(InterfaceImplementationError("invalid return type for `$IT` interface method definition: `$(methodsig(f, args))`; inferred $RT1, required $RT2"))
-@noinline subtypingrequired(IT, T) = throw(InterfaceImplementationError("interface `$IT` requires implementing types to subtype, like: `struct $T <: $IT`"))
-@noinline atleastonerequired(IT, expr) = throw(InterfaceImplementationError("for `$IT` interface, one of the following method definitions is required: `$expr`"))
+@noinline function missingmethod(debug, IT, f, args, mods)
+    msg = "missing `$IT` interface method definition: `$(Interfaces.methodsig(f, args))`, in module(s): `$mods`"
+    debug ? print_error(msg) : throw(InterfaceImplementationError(msg))
+end
+
+@noinline function invalidreturntype(debug, IT, f, args, RT1, RT2)
+    msg = "invalid return type for `$IT` interface method definition: `$(methodsig(f, args))`; inferred $RT1, required $RT2"
+    debug ? print_error(msg) : throw(InterfaceImplementationError(msg))
+end
+
+@noinline function subtypingrequired(debug, IT, T)
+    msg = "interface `$IT` requires implementing types to subtype, like: `struct $T <: $IT`"
+    debug ? print_error(msg) : throw(InterfaceImplementationError(msg))
+end
+
+@noinline function atleastonerequired(debug, IT, expr)
+    msg = "for `$IT` interface, one of the following method definitions is required: `$expr`"
+    debug ? print_error(msg) : throw(InterfaceImplementationError(msg))
+end
+
+function print_error(msg)
+    printstyled("[ InterfaceImplementationError: "; color=Base.error_color())
+    println(msg)
+end
 
 function toimplements!(IT, arg::Expr, shouldthrow::Bool=true)
     if arg.head == :call
@@ -139,11 +162,16 @@ function toimplements!(IT, arg::Expr, shouldthrow::Bool=true)
     elseif arg.head == :<:
         RT = arg.args[2]
         if RT == IT
-            return :((T <: $RT) || Interfaces.subtypingrequired($RT, T))
+            return quote
+                check = T <: $RT
+                check || Interfaces.subtypingrequired($RT, T)
+                check
+            end
         else
             return quote
                 check = Interfaces.isinterfacetype($RT) ? Interfaces.implements(T, $RT, mods) : T <: $RT
                 check || Interfaces.subtypingrequired($RT, T)
+                check
             end
         end
     elseif arg.head == :if
@@ -173,7 +201,11 @@ function toimplements!(IT, arg::Expr, shouldthrow::Bool=true)
             arg = arg.args[2]
         end
         arg.args[2] = toimplements!(IT, arg.args[2], false)
-        return :(($origarg) || Interfaces.atleastonerequired($IT, $(Meta.quot(argcopy))))
+        return quote
+            check = $origarg
+            check || Interfaces.atleastonerequired(debug, $IT, $(Meta.quot(argcopy)))
+            check
+        end
     elseif arg.head == :block
         # not expected at top-level of @interface block
         # but can be block of if-else or || expressions
@@ -217,19 +249,28 @@ macro interface(IT, alias_or_block, maybe_block=nothing)
     return esc(quote
         Interfaces.isinterfacetype(::Type{$IT}) = true
         Interfaces.interface(::Type{$IT}) = $iface
-        function Interfaces.implements(::Type{T}, ::Type{$IT}, mods::Vector{Module}=[parentmodule(T)]) where {T}
+        function Interfaces.implements(::Type{T}, ::Type{$IT}, mods::Vector{Module}=[parentmodule(T)]; debug=false) where {T}
             $block
         end
     end)
 end
 
-macro implements(T, IT)
+macro implements(T, IT, debug=false)
+    x = debug isa Bool ? debug :
+        (debug isa Expr && debug.head == :(=)) ? debug.args[2] :
+        throw(ArgumentError("unsupported call to @implements: `$debug`"))
     return esc(quote
-        @assert Interfaces.implements($T, $IT)
+        @assert Interfaces.implements($T, $IT; debug=$x)
         Interfaces.implements(::Type{$T}, ::Type{$IT}) = true
     end)
 end
 
-@noinline returntype(@nospecialize(f), @nospecialize(args)) = Base.return_types(f, args)[1]
+struct NoMethod end
+
+@noinline function returntype(@nospecialize(f), @nospecialize(args))
+    rt = Base.return_types(f, args)
+    # Avoid BoundsError in debug mode when no method found
+    return isempty(rt) ? NoMethod : rt[1]
+end
 
 end # module
