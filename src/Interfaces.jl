@@ -135,7 +135,7 @@ function toimplements!(IT, arg::Expr, shouldthrow::Bool=true)
             return :((T <: $RT) || Interfaces.subtypingrequired($RT, T))
         else
             return quote
-                check = Interfaces.isinterfacetype($RT) ? Interfaces.implements(T, $RT) : T <: $RT
+                check = Interfaces.isinterfacetype($RT) ? Interfaces.implements(T, $RT, mods) : T <: $RT
                 check || Interfaces.subtypingrequired($RT, T)
             end
         end
