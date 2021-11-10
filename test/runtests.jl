@@ -90,7 +90,7 @@ abstract type AbstractTable end
         Tables.columns(::AbstractTable)::Tables.AbstractColumns
     end
 
-    # @optional schema(::AbstractTable)::Union{Nothing, Tables.Schema}
+    @optional Tables.schema(::AbstractTable)::Union{Nothing, Tables.Schema}
 end
 
 @test Interfaces.implements(Tables.DictRowTable, AbstractTable)
