@@ -164,14 +164,17 @@ function toimplements!(IT, arg::Expr, shouldthrow::Bool=true)
         # but can be block of if-else or || expressions
         map!(x -> toimplements!(IT, x, shouldthrow), arg.args, arg.args)
         return arg
-    elseif arg.head == :macrocall && arg.args[1] == :@optional
+    elseif arg.head == :macrocall && arg.args[1] == Symbol("@optional")
         return quote
             if @isdefined(debug) && debug
-                $(toimplements!(IT, arg.args[2]))
+                $(toimplements!(IT, arg.args[3]))
             end
         end
     else
-        throw(ArgumentError("unsupported expression in @interface block for `$IT`: `$arg`"))
+        io = IOBuffer()
+        dump(io, arg)
+        ex = String(take!(io))
+        throw(ArgumentError("unsupported expression in @interface block for `$IT`: `$ex`"))
     end
 end
 
