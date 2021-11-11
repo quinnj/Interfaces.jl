@@ -111,12 +111,12 @@ end
 
 function requiredreturn(IT, nm, args, shouldthrow, RT_sym, __RT__)
     return quote
-        $(requiredmethod(IT, nm, args, shouldthrow))
+        check1 = $(requiredmethod(IT, nm, args, shouldthrow))
         $RT_sym = Interfaces.returntype($nm, $args)
         # @show $RT_sym, $nm, $args, Interfaces.isinterfacetype($__RT__)
-        check = Interfaces.isinterfacetype($__RT__) ?  Interfaces.implements($RT_sym, $__RT__) : $RT_sym <: $__RT__
-        check || ($shouldthrow && Interfaces.invalidreturntype(debuglvl, $IT, $nm, $args, $RT_sym, $__RT__))
-        check
+        check2 = Interfaces.isinterfacetype($__RT__) ?  Interfaces.implements($RT_sym, $__RT__) : $RT_sym <: $__RT__
+        check2 || ($shouldthrow && Interfaces.invalidreturntype(debuglvl, $IT, $nm, $args, $RT_sym, $__RT__))
+        check1 & check2
     end
 end
 
