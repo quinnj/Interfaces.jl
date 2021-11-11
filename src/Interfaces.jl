@@ -111,12 +111,14 @@ end
 
 function requiredreturn(IT, nm, args, shouldthrow, RT_sym, __RT__)
     return quote
-        check1 = $(requiredmethod(IT, nm, args, shouldthrow))
-        $RT_sym = Interfaces.returntype($nm, $args)
-        # @show $RT_sym, $nm, $args, Interfaces.isinterfacetype($__RT__)
-        check2 = Interfaces.isinterfacetype($__RT__) ?  Interfaces.implements($RT_sym, $__RT__) : $RT_sym <: $__RT__
-        check2 || ($shouldthrow && Interfaces.invalidreturntype(debuglvl, $IT, $nm, $args, $RT_sym, $__RT__))
-        check1 & check2
+        check = $(requiredmethod(IT, nm, args, shouldthrow))
+        if check
+            $RT_sym = Interfaces.returntype($nm, $args)
+            # @show $RT_sym, $nm, $args, Interfaces.isinterfacetype($__RT__)
+            check &= Interfaces.isinterfacetype($__RT__) ?  Interfaces.implements($RT_sym, $__RT__) : $RT_sym <: $__RT__
+            check || ($shouldthrow && Interfaces.invalidreturntype(debuglvl, $IT, $nm, $args, $RT_sym, $__RT__))
+        end
+        return check
     end
 end
 
@@ -279,12 +281,6 @@ macro implements(T, IT, debug=false)
     end)
 end
 
-struct NoMethod end
-
-@noinline function returntype(@nospecialize(f), @nospecialize(args))
-    rt = Base.return_types(f, args)
-    # Avoid BoundsError in debug mode when no method found
-    return isempty(rt) ? NoMethod : rt[1]
-end
+@noinline returntype(@nospecialize(f), @nospecialize(args)) = Base.return_types(f, args)[1]
 
 end # module
