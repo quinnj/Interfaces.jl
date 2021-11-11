@@ -16,7 +16,7 @@ struct Interface
     exprs::Vector{Any}
 end
 
-function Base.show(io::IO, x::Interface)
+function Base.show(io::IO, ::MIME"text/plain", x::Interface)
     println(io, "Interface: $(x.name)")
     foreach(ex -> showexpr(io, ex), x.exprs)
     return
