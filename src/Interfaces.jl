@@ -68,8 +68,8 @@ end
 
 function implements end
 
-implements(::Type{Type{T}}, ::Type{Type{IT}}, mods::Vector{Module}=[parentmodule(T)]) where {T, IT} =
-    implements(T, IT, mods)
+implements(::Type{Type{T}}, ::Type{Type{IT}}, mods::Vector{Module}=[parentmodule(T)]; debug::Bool=false) where {T, IT} =
+    implements(T, IT, mods; debug=debug)
 
 function implemented(f, args, mods)
     impls = Base.methods(f, args, mods)
@@ -142,23 +142,72 @@ function methodparts(IT, x::Expr)
     return methodname, args
 end
 
-requiredmethod(IT, nm, args, shouldthrow) = :(Interfaces.implemented($nm, $args, mods) || ($shouldthrow && Interfaces.missingmethod($IT, $nm, $args, mods)))
+"""
+Construct the method signature from a function name and argument types.
 
-function requiredreturn(T, nm, args, shouldthrow, RT_sym, __RT__)
+    methodsig(:foo, Tuple{Int64, Float64, Any}) == :(foo(::Int64, ::Float64, ::Any))
+"""
+methodsig(f, args) = Expr(:call, f, unconvertargs(args)...)
+
+function requiredmethod(IT, nm, args, shouldthrow)
     return quote
-        check = $(requiredmethod(T, nm, args, shouldthrow))
-        $RT_sym = Interfaces.returntype($nm, $args)
-        # @show $RT_sym, $nm, $args, Interfaces.isinterfacetype($__RT__)
-        check |= Interfaces.isinterfacetype($__RT__) ?  Interfaces.implements($RT_sym, $__RT__) : $RT_sym <: $__RT__
-        check || ($shouldthrow && Interfaces.invalidreturntype($nm, $args, $RT_sym, $__RT__))
+        check = Interfaces.implemented($nm, $args, mods)
+        check || ($shouldthrow && Interfaces.missingmethod(loglevel, $IT, $nm, $args, mods))
+        check
     end
 end
 
-@noinline missingmethod(IT, f, args, mods) = throw(InterfaceImplementationError("missing `$IT` interface method definition: `$(Expr(:call, f, unconvertargs(args)...))`, in module(s): `$mods`"))
-@noinline invalidreturntype(IT, f, args, RT1, RT2) = throw(InterfaceImplementationError("invalid return type for `$IT` interface method definition: `$(Expr(:call, f, unconvertargs(args)...))`; inferred $RT1, required $RT2"))
-@noinline subtypingrequired(IT, T) = throw(InterfaceImplementationError("interface `$IT` requires implementing types to subtype, like: `struct $T <: $IT`"))
-@noinline atleastonerequired(IT, expr) = throw(InterfaceImplementationError("for `$IT` interface, one of the following method definitions is required: `$expr`"))
+function requiredreturn(IT, nm, args, shouldthrow, RT_sym, __RT__)
+    return quote
+        check = $(requiredmethod(IT, nm, args, shouldthrow))
+        if check
+            $RT_sym = Interfaces.returntype($nm, $args)
+            # @show $RT_sym, $nm, $args, Interfaces.isinterfacetype($__RT__)
+            check &= Interfaces.isinterfacetype($__RT__) ?  Interfaces.implements($RT_sym, $__RT__) : $RT_sym <: $__RT__
+            check || ($shouldthrow && Interfaces.invalidreturntype(loglevel, $IT, $nm, $args, $RT_sym, $__RT__))
+        end
+        check
+    end
+end
 
+@noinline function missingmethod(loglevel, IT, f, args, mods)
+    log_or_throw(loglevel, "missing `$IT` interface method definition: `$(Interfaces.methodsig(f, args))`, in module(s): `$mods`")
+end
+
+@noinline function invalidreturntype(loglevel, IT, f, args, RT1, RT2)
+    log_or_throw(loglevel, "invalid return type for `$IT` interface method definition: `$(methodsig(f, args))`; inferred $RT1, required $RT2")
+end
+
+@noinline function subtypingrequired(loglevel, IT, T)
+    log_or_throw(loglevel, "interface `$IT` requires implementing types to subtype, like: `struct $T <: $IT`")
+end
+
+@noinline function atleastonerequired(loglevel, IT, expr)
+    log_or_throw(loglevel, "for `$IT` interface, one of the following method definitions is required: `$expr`")
+end
+
+function log_or_throw(loglevel, msg)
+    if loglevel === :required
+        log_required(msg)
+    elseif loglevel === :optional
+        log_optional(msg)
+    else
+        throw(InterfaceImplementationError(msg))
+    end
+end
+
+function log_required(msg)
+    printstyled("[ InterfaceImplementationError: "; color=Base.error_color())
+    println(msg)
+end
+
+function log_optional(msg)
+    printstyled("[ @optional definition missing: "; color=Base.warn_color())
+    println(msg)
+end
+
+# `shouldthrow` indicates whether or not it is an error for a particular expression not
+# to be satisfied. We set this to false for the individual expressions in `ex1 || ex2`.
 function toimplements!(IT, arg::Expr, shouldthrow::Bool=true)
     if arg.head == :call
         # required method definition
@@ -180,11 +229,16 @@ function toimplements!(IT, arg::Expr, shouldthrow::Bool=true)
     elseif arg.head == :<:
         RT = arg.args[2]
         if RT == IT
-            return :((T <: $RT) || Interfaces.subtypingrequired($RT, T))
+            return quote
+                check = T <: $RT
+                check || Interfaces.subtypingrequired(loglevel, $RT, T)
+                check
+            end
         else
             return quote
                 check = Interfaces.isinterfacetype($RT) ? Interfaces.implements(T, $RT, mods) : T <: $RT
-                check || Interfaces.subtypingrequired($RT, T)
+                check || Interfaces.subtypingrequired(loglevel, $RT, T)
+                check
             end
         end
     elseif arg.head == :if
@@ -214,7 +268,11 @@ function toimplements!(IT, arg::Expr, shouldthrow::Bool=true)
             arg = arg.args[2]
         end
         arg.args[2] = toimplements!(IT, arg.args[2], false)
-        return :(($origarg) || Interfaces.atleastonerequired($IT, $(Meta.quot(argcopy))))
+        return quote
+            check = $origarg
+            check || Interfaces.atleastonerequired(loglevel, $IT, $(Meta.quot(argcopy)))
+            check
+        end
     elseif arg.head == :block
         # not expected at top-level of @interface block
         # but can be block of if-else or || expressions
@@ -222,8 +280,12 @@ function toimplements!(IT, arg::Expr, shouldthrow::Bool=true)
         return arg
     elseif arg.head == :macrocall && arg.args[1] == Symbol("@optional")
         return quote
-            if @isdefined(debug) && debug
-                $(toimplements!(IT, arg.args[3]))
+            if debug
+                oldlvl = loglevel
+                loglevel = :optional
+                check = $(toimplements!(IT, arg.args[3], shouldthrow))
+                loglevel = oldlvl
+                check
             else
                 true
             end
@@ -258,15 +320,19 @@ macro interface(IT, alias_or_block, maybe_block=nothing)
     return esc(quote
         Interfaces.isinterfacetype(::Type{$IT}) = true
         Interfaces.interface(::Type{$IT}) = $iface
-        function Interfaces.implements(::Type{T}, ::Type{$IT}, mods::Vector{Module}=[parentmodule(T)]) where {T}
+        function Interfaces.implements(::Type{T}, ::Type{$IT}, mods::Vector{Module}=[parentmodule(T)]; debug::Bool=false) where {T}
+            loglevel = debug ? :required : :none
             $block
         end
     end)
 end
 
-macro implements(T, IT)
+macro implements(T, IT, debug=false)
+    x = debug isa Bool ? debug :
+        (debug isa Expr && debug.head == :(=)) ? debug.args[2] :
+        throw(ArgumentError("unsupported argument in @implements: `$debug`"))
     return esc(quote
-        @assert Interfaces.implements($T, $IT)
+        @assert Interfaces.implements($T, $IT; debug=$x)
         Interfaces.implements(::Type{$T}, ::Type{$IT}) = true
     end)
 end
