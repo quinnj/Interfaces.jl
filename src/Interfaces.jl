@@ -118,7 +118,7 @@ function requiredreturn(IT, nm, args, shouldthrow, RT_sym, __RT__)
             check &= Interfaces.isinterfacetype($__RT__) ?  Interfaces.implements($RT_sym, $__RT__) : $RT_sym <: $__RT__
             check || ($shouldthrow && Interfaces.invalidreturntype(loglevel, $IT, $nm, $args, $RT_sym, $__RT__))
         end
-        return check
+        check
     end
 end
 
