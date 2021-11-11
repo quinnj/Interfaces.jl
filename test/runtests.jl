@@ -131,9 +131,7 @@ abstract type Example end
 end
 
 int = Interfaces.interface(Example)
-io = IOBuffer()
-show(io, int)
-@test String(take!(io)) == """
+@test repr(int) == """
 Interface: Example
   * subtyping: `T <: Example`
   * method definition: `foo1(arg::Example, arg2::Int)`
