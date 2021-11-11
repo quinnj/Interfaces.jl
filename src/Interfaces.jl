@@ -102,7 +102,11 @@ Construct the method signature from a function name and argument types.
 methodsig(f, args) = Expr(:call, f, unconvertargs(args)...)
 
 function requiredmethod(IT, nm, args, shouldthrow)
-    :(Interfaces.implemented($nm, $args, mods) || ($shouldthrow && Interfaces.missingmethod(debuglvl, $IT, $nm, $args, mods)))
+    return quote
+        check = Interfaces.implemented($nm, $args, mods)
+        check || ($shouldthrow && Interfaces.missingmethod(debuglvl, $IT, $nm, $args, mods))
+        check
+    end
 end
 
 function requiredreturn(IT, nm, args, shouldthrow, RT_sym, __RT__)
