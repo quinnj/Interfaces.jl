@@ -118,30 +118,30 @@ end
 
 @noinline function missingmethod(debuglvl, IT, f, args, mods)
     msg = "missing `$IT` interface method definition: `$(Interfaces.methodsig(f, args))`, in module(s): `$mods`"
-    debuglvl == :error ? print_error(msg) : debuglvl == :warn ? print_warn(msg) : throw(InterfaceImplementationError(msg))
+    debuglvl == :required ? log_required(msg) : debuglvl == :optional ? log_optional(msg) : throw(InterfaceImplementationError(msg))
 end
 
 @noinline function invalidreturntype(debuglvl, IT, f, args, RT1, RT2)
     msg = "invalid return type for `$IT` interface method definition: `$(methodsig(f, args))`; inferred $RT1, required $RT2"
-    debuglvl == :error ? print_error(msg) : debuglvl == :warn ? print_warn(msg) : throw(InterfaceImplementationError(msg))
+    debuglvl == :required ? log_required(msg) : debuglvl == :optional ? log_optional(msg) : throw(InterfaceImplementationError(msg))
 end
 
 @noinline function subtypingrequired(debuglvl, IT, T)
     msg = "interface `$IT` requires implementing types to subtype, like: `struct $T <: $IT`"
-    debuglvl == :error ? print_error(msg) : debuglvl == :warn ? print_warn(msg) : throw(InterfaceImplementationError(msg))
+    debuglvl == :required ? log_required(msg) : debuglvl == :optional ? log_optional(msg) : throw(InterfaceImplementationError(msg))
 end
 
 @noinline function atleastonerequired(debuglvl, IT, expr)
     msg = "for `$IT` interface, one of the following method definitions is required: `$expr`"
-    debuglvl == :error ? print_error(msg) : debuglvl == :warn ? print_warn(msg) : throw(InterfaceImplementationError(msg))
+    debuglvl == :required ? log_required(msg) : debuglvl == :optional ? log_optional(msg) : throw(InterfaceImplementationError(msg))
 end
 
-function print_error(msg)
+function log_required(msg)
     printstyled("[ InterfaceImplementationError: "; color=Base.error_color())
     println(msg)
 end
 
-function print_warn(msg)
+function log_optional(msg)
     printstyled("[ @optional definition missing: "; color=Base.warn_color())
     println(msg)
 end
@@ -220,7 +220,7 @@ function toimplements!(IT, arg::Expr, shouldthrow::Bool=true)
         return quote
             if debug
                 oldlvl = debuglvl
-                debuglvl = :warn
+                debuglvl = :optional
                 check = $(toimplements!(IT, arg.args[3], shouldthrow))
                 debuglvl = oldlvl
                 check
@@ -259,7 +259,7 @@ macro interface(IT, alias_or_block, maybe_block=nothing)
         Interfaces.isinterfacetype(::Type{$IT}) = true
         Interfaces.interface(::Type{$IT}) = $iface
         function Interfaces.implements(::Type{T}, ::Type{$IT}, mods::Vector{Module}=[parentmodule(T)]; debug::Bool=false) where {T}
-            debuglvl = debug ? :error : :none
+            debuglvl = debug ? :required : :none
             $block
         end
     end)
