@@ -96,6 +96,64 @@ end
 @test Interfaces.implements(Tables.DictRowTable, AbstractTable)
 @test Interfaces.implements(Tables.DictColumnTable, AbstractTable)
 
+abstract type Example end
+
+@interface Example T begin
+
+    # required subtyping
+    T <: Example
+
+    # required method definition
+    foo1(arg::Example, arg2::Int)
+
+    # method def w/ return type
+    foo2(arg::Example)::Float64
+
+    # method def w/ interface return type
+    foo3(arg::Example)::Iterable
+
+    # one of many required
+    foo4(arg::Example) || foo5(arg::Example) || foo6(arg::Example)
+
+    # conditional
+    if foo7(T)
+        foo8(arg::Example)
+        foo9(arg::Example)::RT where {RT <: Iterable}
+        foo10(RT)::Int
+    elseif foo11(T)
+        foo12(arg::Example)
+    else
+        foo13(arg::Example) || foo14(arg::Example)
+    end
+
+    @optional foo15(arg::Example)
+
+end
+
+@test repr("text/plain", Interfaces.interface(Example)) == """
+Interface: Example
+  * subtyping: `T <: Example`
+  * method definition: `foo1(arg::Example, arg2::Int)`
+  * method definition with required return type: `foo2(arg::Example)::Float64`
+  * method definition with required return type: `foo3(arg::Example)::Iterable`
+  * one of the following required:
+    * method definition: `foo4(arg::Example)`
+    * method definition: `foo5(arg::Example)`
+    * method definition: `foo6(arg::Example)`
+  * conditional requirements:
+    * if foo7(Example)
+      * method definition: `foo8(arg::Example)`
+      * method definition with required return type: `foo9(arg::Example)::(RT where RT <: Iterable)`
+      * method definition with required return type: `foo10(RT)::Int`
+    * elseif foo11(Example)
+      * method definition: `foo12(arg::Example)`
+    * else
+      * one of the following required:
+        * method definition: `foo13(arg::Example)`
+        * method definition: `foo14(arg::Example)`
+  * optional interface requirement:
+    * method definition: `foo15(arg::Example)`"""
+
 abstract type AbstractStridedArray end
 
 @interface AbstractStridedArray A begin
