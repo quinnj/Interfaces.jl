@@ -157,3 +157,15 @@ Interface: Example
   * optional interface requirement:
     * method definition: `foo15(arg::Example)`
 """
+
+abstract type AbstractStridedArray end
+
+@interface AbstractStridedArray A begin
+    A <: AbstractArray
+    strides(::A)
+    Base.unsafe_convert(::Type{<:Ptr}, ::A)
+    Base.elsize(::Type{<:A})
+    @optional stride(::A, i::Int)
+end
+
+@test Interfaces.implements(Vector{Int}, AbstractStridedArray, [Base])
