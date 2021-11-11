@@ -130,7 +130,15 @@ function toimplements!(IT, arg::Expr, shouldthrow::Bool=true)
         end
         return requiredreturn(IT, nm, args, shouldthrow, sym, __RT__)
     elseif arg.head == :<:
-        return :((T <: $IT) || Interfaces.subtypingrequired($IT, T))
+        RT = arg.args[2]
+        if RT == IT
+            return :((T <: $RT) || Interfaces.subtypingrequired($RT, T))
+        else
+            return quote
+                check = Interfaces.isinterfacetype($RT) ? Interfaces.implements(T, $RT, mods) : T <: $RT
+                check || Interfaces.subtypingrequired($RT, T)
+            end
+        end
     elseif arg.head == :if
         # conditional requirement
         origarg = arg

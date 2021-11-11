@@ -95,3 +95,15 @@ end
 
 @test Interfaces.implements(Tables.DictRowTable, AbstractTable)
 @test Interfaces.implements(Tables.DictColumnTable, AbstractTable)
+
+abstract type AbstractStridedArray end
+
+@interface AbstractStridedArray A begin
+    A <: AbstractArray
+    strides(::A)
+    Base.unsafe_convert(::Type{<:Ptr}, ::A)
+    Base.elsize(::Type{<:A})
+    @optional stride(::A, i::Int)
+end
+
+@test Interfaces.implements(Vector{Int}, AbstractStridedArray, [Base])
