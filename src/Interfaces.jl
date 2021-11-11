@@ -16,7 +16,55 @@ struct Interface
     exprs::Vector{Any}
 end
 
-# TODO: custom show for Interface
+function Base.show(io::IO, x::Interface)
+    println(io, "Interface: $(x.name)")
+    foreach(ex -> showexpr(io, ex), x.exprs)
+    return
+end
+
+unwrapblock(ex::Expr) = ex.head == :block ? ex.args[1] : ex
+
+function showexpr(io::IO, arg, indent=1)
+    if arg.head == :call
+        println(io, "  "^indent * "* method definition: `$arg`")
+    elseif arg.head == :(::)
+        println(io, "  "^indent * "* method definition with required return type: `$arg`")
+    elseif arg.head == :<:
+        println(io, "  "^indent * "* subtyping: `T <: $(arg.args[2])`")
+    elseif arg.head == :if
+        println(io, "  "^indent * "* conditional requirements:")
+        println(io, "  "^(indent + 1) * "* if $(unwrapblock(arg.args[1]))")
+        showexpr(io, arg.args[2], indent + 2)
+        while length(arg.args) > 2
+            if arg.args[3].head == :elseif
+                arg = arg.args[3]
+                println(io, "  "^(indent + 1) * "* elseif $(unwrapblock(arg.args[1]))")
+                showexpr(io, arg.args[2], indent + 2)
+            else
+                # else block
+                println(io, "  "^(indent + 1) * "* else")
+                showexpr(io, arg.args[3], indent + 2)
+                break
+            end
+        end
+    elseif arg.head == :||
+        println(io, "  "^indent * "* one of the following required:")
+        while true
+            showexpr(io, arg.args[1], indent + 1)
+            arg.args[2].head == :|| || break
+            arg = arg.args[2]
+        end
+        showexpr(io, arg.args[2], indent + 1)
+    elseif arg.head == :block
+        for x in arg.args
+            showexpr(io, x, indent)
+        end
+    elseif arg.head == :macrocall && arg.args[1] == Symbol("@optional")
+        println(io, "  "^indent * "* optional interface requirement:")
+        showexpr(io, arg.args[3], indent + 1)
+    end
+    return
+end
 
 function implements end
 
