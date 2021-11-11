@@ -130,8 +130,7 @@ abstract type Example end
 
 end
 
-int = Interfaces.interface(Example)
-@test repr(int) == """
+@test repr("text/plain", Interfaces.interface(Example)) == """
 Interface: Example
   * subtyping: `T <: Example`
   * method definition: `foo1(arg::Example, arg2::Int)`
@@ -153,8 +152,7 @@ Interface: Example
         * method definition: `foo13(arg::Example)`
         * method definition: `foo14(arg::Example)`
   * optional interface requirement:
-    * method definition: `foo15(arg::Example)`
-"""
+    * method definition: `foo15(arg::Example)`"""
 
 abstract type AbstractStridedArray end
 

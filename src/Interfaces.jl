@@ -17,7 +17,7 @@ struct Interface
 end
 
 function Base.show(io::IO, ::MIME"text/plain", x::Interface)
-    println(io, "Interface: $(x.name)")
+    print(io, "Interface: $(x.name)")
     foreach(ex -> showexpr(io, ex), x.exprs)
     return
 end
@@ -26,29 +26,29 @@ unwrapblock(ex::Expr) = ex.head == :block ? ex.args[1] : ex
 
 function showexpr(io::IO, arg, indent=1)
     if arg.head == :call
-        println(io, "  "^indent * "* method definition: `$arg`")
+        print(io, "\n" * "  "^indent * "* method definition: `$arg`")
     elseif arg.head == :(::)
-        println(io, "  "^indent * "* method definition with required return type: `$arg`")
+        print(io, "\n" * "  "^indent * "* method definition with required return type: `$arg`")
     elseif arg.head == :<:
-        println(io, "  "^indent * "* subtyping: `T <: $(arg.args[2])`")
+        print(io, "\n" * "  "^indent * "* subtyping: `T <: $(arg.args[2])`")
     elseif arg.head == :if
-        println(io, "  "^indent * "* conditional requirements:")
-        println(io, "  "^(indent + 1) * "* if $(unwrapblock(arg.args[1]))")
+        print(io, "\n" * "  "^indent * "* conditional requirements:")
+        print(io, "\n" * "  "^(indent + 1) * "* if $(unwrapblock(arg.args[1]))")
         showexpr(io, arg.args[2], indent + 2)
         while length(arg.args) > 2
             if arg.args[3].head == :elseif
                 arg = arg.args[3]
-                println(io, "  "^(indent + 1) * "* elseif $(unwrapblock(arg.args[1]))")
+                print(io, "\n" * "  "^(indent + 1) * "* elseif $(unwrapblock(arg.args[1]))")
                 showexpr(io, arg.args[2], indent + 2)
             else
                 # else block
-                println(io, "  "^(indent + 1) * "* else")
+                print(io, "\n" * "  "^(indent + 1) * "* else")
                 showexpr(io, arg.args[3], indent + 2)
                 break
             end
         end
     elseif arg.head == :||
-        println(io, "  "^indent * "* one of the following required:")
+        print(io, "\n" * "  "^indent * "* one of the following required:")
         while true
             showexpr(io, arg.args[1], indent + 1)
             arg.args[2].head == :|| || break
@@ -60,7 +60,7 @@ function showexpr(io::IO, arg, indent=1)
             showexpr(io, x, indent)
         end
     elseif arg.head == :macrocall && arg.args[1] == Symbol("@optional")
-        println(io, "  "^indent * "* optional interface requirement:")
+        print(io, "\n" * "  "^indent * "* optional interface requirement:")
         showexpr(io, arg.args[3], indent + 1)
     end
     return
