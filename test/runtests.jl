@@ -119,7 +119,7 @@ abstract type Example end
     if foo7(T)
         foo8(arg::Example)
         foo9(arg::Example)::RT where {RT <: Iterable}
-        foo10(RT)::Int
+        foo10(::RT)::Int
     elseif foo11(T)
         foo12(arg::Example)
     else
@@ -144,7 +144,7 @@ Interface: Example
     * if foo7(Example)
       * method definition: `foo8(arg::Example)`
       * method definition with required return type: `foo9(arg::Example)::(RT where RT <: Iterable)`
-      * method definition with required return type: `foo10(RT)::Int`
+      * method definition with required return type: `foo10(::RT)::Int`
     * elseif foo11(Example)
       * method definition: `foo12(arg::Example)`
     * else
