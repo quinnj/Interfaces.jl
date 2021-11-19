@@ -22,6 +22,22 @@ abstract type Iterable end
         eltype(::Iterable) || eltype(::Type{Iterable})
     end
 
+    @test x begin
+        i = 0
+        state = iterate(x)
+        eT = Base.IteratorEltype(x) == Base.HasEltype() ? eltype(x) : Any
+        while state !== nothing
+            val, st = state
+            @test val isa eT
+            i += 1
+            state = iterate(x, st)
+        end
+        if Base.IteratorSize(x) == Base.HasLength()
+            @test i == length(x)
+        elseif Base.IteratorSize(x) == Base.HasShape()
+            @test i == length(x)
+        end
+    end
 end
 
 @test Interfaces.implements(Int, Iterable, [Base])
