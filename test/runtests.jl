@@ -1,4 +1,4 @@
-using Test, Interfaces, Tables
+using Test, Interfaces, Tables, InlineStrings
 
 abstract type Iterable end
 
@@ -96,6 +96,30 @@ end
 @test Interfaces.implements(Tables.DictRowTable, AbstractTable)
 @test Interfaces.implements(Tables.DictColumnTable, AbstractTable)
 
+@interface AbstractString T begin
+    T <: AbstractString
+    ncodeunits(::T)::Int
+    codeunit(::T)::Type{<:Union{UInt8, UInt16, UInt32}}
+    codeunit(::T, i::Integer)::Union{UInt8, UInt16, UInt32}
+    isvalid(::T, i::Integer)::Bool
+    iterate(::T, i::Integer)::Union{Nothing, Tuple{<:AbstractChar, Int}}
+end
+
+@test Interfaces.implements(String1, AbstractString)
+@test Interfaces.implements(String3, AbstractString)
+@test Interfaces.implements(String7, AbstractString)
+@test Interfaces.implements(String15, AbstractString)
+@test Interfaces.implements(String31, AbstractString)
+@test Interfaces.implements(String63, AbstractString)
+@test Interfaces.implements(String127, AbstractString)
+@test Interfaces.implements(String255, AbstractString)
+@test Interfaces.implements(String, AbstractString, [Base])
+@test Interfaces.implements(GenericString, AbstractString)
+@test Interfaces.implements(SubstitutionString, AbstractString)
+
+# @test Interfaces.implements(SubString, AbstractString)
+# @test Interfaces.implements(LazyString, AbstractString)
+
 abstract type Example end
 
 @interface Example T begin
@@ -165,3 +189,7 @@ abstract type AbstractStridedArray end
 end
 
 @test Interfaces.implements(Vector{Int}, AbstractStridedArray, [Base])
+
+# AbstractDict
+# IO
+# Number
